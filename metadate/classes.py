@@ -200,6 +200,17 @@ class MetaRelative(Meta):
         modifier = self.modifier or getattr(other, "modifier", False)
         return MetaRelative(span, levels, modifier=modifier, rd=rd)
 
+    @classmethod
+    def _from_scanner(cls, span, levels, rd_obj):
+        """Fast constructor for C scanner — skips float checks."""
+        obj = object.__new__(cls)
+        obj.span = span
+        obj.levels = levels
+        obj.rd = rd_obj
+        obj.rd_args = {}
+        obj.modifier = False
+        return obj
+
     def __repr__(self):
         return f"{self.__class__.__name__}(rd={self.rd}, levels={self.levels})"
 

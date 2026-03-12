@@ -1,10 +1,10 @@
-"""CScanner — C-accelerated drop-in replacement for NewScanner."""
+"""CScanner — C-accelerated date scanner."""
 
 from metadate._cscanner import Scanner as _CScanner
 
 
 class CScanner:
-    """C-accelerated scanner — same interface as Scanner/NewScanner."""
+    """C-accelerated scanner — same interface as Scanner."""
 
     def __init__(self, locale, re_flags=None):
         locale_data = {
