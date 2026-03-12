@@ -38,6 +38,7 @@ MODIFIERS = {
     "next":  1,
     "coming": 1,
     "after": 1,
+    "within": 1,
     "before": -1,
     'recent': -1,
     'past': -1,

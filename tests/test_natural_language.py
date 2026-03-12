@@ -86,7 +86,6 @@ class TestWeekdays:
         assert r is not None
         assert r.start_date.weekday() == 4  # Friday
 
-    @pytest.mark.xfail(reason="weekday + 'in two weeks' combo not yet supported")
     def test_friday_in_two_weeks(self):
         r = parse_date("friday in two weeks", reference_date=REF)
         assert r is not None
@@ -138,13 +137,11 @@ class TestRelativeDurations:
         assert r is not None
         assert r.start_date.year == 2024
 
-    @pytest.mark.xfail(reason="'in N weeks' treats start_date as ref rather than ref + offset")
     def test_in_3_weeks(self):
         r = parse_date("in 3 weeks", reference_date=REF)
         assert r is not None
         assert r.start_date > REF
 
-    @pytest.mark.xfail(reason="'in N weeks and N days' treats start_date as ref rather than ref + offset")
     def test_in_3_weeks_and_5_days(self):
         r = parse_date("in 3 weeks and 5 days", reference_date=REF)
         assert r is not None
@@ -160,7 +157,6 @@ class TestRelativeDurations:
         assert r is not None
         assert r.start_date < REF
 
-    @pytest.mark.xfail(reason="multi-unit duration without modifier not parsed as single result")
     def test_6_days_23_hours_58_minutes(self):
         r = parse_date("6 days 23 hours 58 minutes", reference_date=REF)
         assert r is not None
@@ -178,7 +174,6 @@ class TestRelativeDurations:
         r = parse_date("over the next twenty 4 years", reference_date=REF)
         assert r is not None
 
-    @pytest.mark.xfail(reason="'within' in sentence context not parsed")
     def test_within_3_weeks(self):
         r = parse_date("i will learn french within 3 weeks", reference_date=REF)
         assert r is not None
@@ -290,7 +285,6 @@ class TestTimeExpressions:
         assert r is not None
         assert r.start_date.hour == 15
 
-    @pytest.mark.xfail(reason="'three in the afternoon' not parsed — 'in the' triggers range logic")
     def test_three_in_the_afternoon(self):
         r = parse_date("three in the afternoon", reference_date=REF)
         assert r is not None
@@ -364,7 +358,6 @@ class TestRangeExpressions:
 # ── Complex sentences ───────────────────────────────────────────────────
 
 class TestComplexSentences:
-    @pytest.mark.xfail(reason="complex sentence: start_date year not correctly resolved to 2018")
     def test_date_embedded_in_sentence(self):
         r = parse_date(
             "The 3 of us will each buy 2 cars 2 weeks after 5th of June in 2018 at 10:05:01 for 100 dollars.",
@@ -373,7 +366,6 @@ class TestComplexSentences:
         assert r is not None
         assert r.start_date.year == 2018
 
-    @pytest.mark.xfail(reason="complex sentence: start_date year not correctly resolved to 2018")
     def test_date_embedded_without_time(self):
         r = parse_date(
             "The 3 of us will each buy 2 cars 2 weeks after 5th of June in 2018 for 100 dollars.",
@@ -524,13 +516,11 @@ class TestModifierUnit:
         assert r is not None
         assert r.start_date == dt(2024, 6, 13, 0, 0)
 
-    @pytest.mark.xfail(reason="'in N hours' uses ref as start rather than ref + offset")
     def test_in_5_hours(self):
         r = parse_date("in 5 hours", reference_date=REF)
         assert r is not None
         assert r.start_date > REF
 
-    @pytest.mark.xfail(reason="'in N minutes' uses ref as start rather than ref + offset")
     def test_in_30_minutes(self):
         r = parse_date("in 30 minutes", reference_date=REF)
         assert r is not None
@@ -594,3 +584,392 @@ class TestEdgeCases:
         assert "levels" in d
         assert "spans" in d
         assert "matches" in d
+
+
+# ── Noon / midnight / time‑of‑day keywords ────────────────────────────
+
+class TestTimeOfDayKeywords:
+    def test_noon(self):
+        r = parse_date("noon", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 12
+
+    def test_midnight(self):
+        r = parse_date("midnight", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 0
+
+    def test_tomorrow_at_noon(self):
+        r = parse_date("tomorrow at noon", reference_date=REF)
+        assert r is not None
+        assert r.start_date.day == 16
+        assert r.start_date.hour == 12
+
+    def test_tomorrow_morning(self):
+        r = parse_date("tomorrow morning", reference_date=REF)
+        assert r is not None
+        assert r.start_date.day == 16
+
+    def test_yesterday_night(self):
+        r = parse_date("yesterday night", reference_date=REF)
+        assert r is not None
+        assert r.start_date.day == 14
+
+
+# ── "now" keyword ──────────────────────────────────────────────────────
+
+class TestNow:
+    def test_now(self):
+        r = parse_date("now", reference_date=REF)
+        assert r is not None
+        assert r.start_date.date() == REF.date()
+
+    def test_right_now(self):
+        r = parse_date("right now", reference_date=REF)
+        # may or may not parse — but shouldn't crash
+        if r is not None:
+            assert r.start_date.date() == REF.date()
+
+
+# ── Compound date + time expressions ──────────────────────────────────
+
+class TestCompoundDateTime:
+    def test_tomorrow_at_3pm(self):
+        r = parse_date("tomorrow at 3pm", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 16, 15, 0)
+
+    def test_next_friday_at_10_30(self):
+        r = parse_date("next friday at 10:30", reference_date=REF)
+        assert r is not None
+        assert r.start_date.weekday() == 4
+        assert r.start_date.hour == 10
+        assert r.start_date.minute == 30
+
+    def test_june_25_at_2pm(self):
+        r = parse_date("June 25 at 2pm", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 6
+        assert r.start_date.day == 25
+        assert r.start_date.hour == 14
+
+    def test_iso_date_at_time(self):
+        r = parse_date("I will arrive on 2018-06-05 at 10:30", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2018, 6, 5, 10, 30)
+
+    def test_march_9th_1990_at_8am(self):
+        r = parse_date("March 9th, 1990 at 8am", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 1990
+        assert r.start_date.month == 3
+        assert r.start_date.day == 9
+        assert r.start_date.hour == 8
+
+
+# ── Written‑out number durations ──────────────────────────────────────
+
+class TestWrittenNumbers:
+    def test_three_weeks_ago(self):
+        r = parse_date("three weeks ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_five_days_ago(self):
+        r = parse_date("five days ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 10, 0, 0)
+
+    def test_in_two_months(self):
+        r = parse_date("in two months", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+    def test_ten_minutes_ago(self):
+        r = parse_date("ten minutes ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_a_few_days_ago(self):
+        r = parse_date("a few days ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_a_couple_weeks_ago(self):
+        r = parse_date("a couple weeks ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_fourteen_hours(self):
+        r = parse_date("fourteen hours ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_twenty_days_from_now(self):
+        r = parse_date("in twenty days", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+
+# ── Informal abbreviations ────────────────────────────────────────────
+
+class TestInformalAbbreviations:
+    def test_5_mins_ago(self):
+        r = parse_date("5 mins ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_2_hrs_ago(self):
+        r = parse_date("2 hrs ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_3_wks(self):
+        r = parse_date("3 wks ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_2_yrs_ago(self):
+        r = parse_date("2 yrs ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2022
+
+
+# ── Past modifier variations ──────────────────────────────────────────
+
+class TestPastModifiers:
+    def test_past_week(self):
+        r = parse_date("past week", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_prior_month(self):
+        r = parse_date("prior month", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_recent_days(self):
+        r = parse_date("recent days", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_previous_year(self):
+        r = parse_date("previous year", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year < 2024
+
+    def test_earlier_this_month(self):
+        r = parse_date("earlier this month", reference_date=REF)
+        assert r is not None
+        assert r.start_date <= REF
+
+
+# ── Conversational / real‑world sentences ─────────────────────────────
+
+class TestConversationalSentences:
+    def test_lets_meet_next_friday(self):
+        r = parse_date("let's meet next friday", reference_date=REF)
+        assert r is not None
+        assert r.start_date.weekday() == 4
+
+    def test_deadline_is_march_2025(self):
+        r = parse_date("the deadline is March 2025", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2025
+        assert r.start_date.month == 3
+
+    def test_birthday_on_august_12(self):
+        r = parse_date("my birthday is on August 12", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 8
+        assert r.start_date.day == 12
+
+    def test_shipped_3_days_ago(self):
+        r = parse_date("the package shipped 3 days ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 12, 0, 0)
+
+    def test_vacation_starts_july_1st(self):
+        r = parse_date("vacation starts July 1st", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 7
+        assert r.start_date.day == 1
+
+    def test_project_due_in_2_weeks(self):
+        r = parse_date("the project is due in 2 weeks", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+    def test_started_working_here_jan_2020(self):
+        r = parse_date("I started working here in Jan 2020", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2020
+        assert r.start_date.month == 1
+
+    def test_call_me_at_5pm_tomorrow(self):
+        r = parse_date("call me at 5pm tomorrow", reference_date=REF)
+        assert r is not None
+        assert r.start_date.day == 16
+        assert r.start_date.hour == 17
+
+    def test_report_was_filed_on_2024_01_15(self):
+        r = parse_date("the report was filed on 2024-01-15", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 1, 15, 0, 0)
+
+    def test_last_updated_2_months_ago(self):
+        r = parse_date("last updated 2 months ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+
+# ── Seasons ────────────────────────────────────────────────────────────
+
+class TestSeasons:
+    def test_summer(self):
+        r = parse_date("summer", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 6
+
+    def test_next_winter(self):
+        r = parse_date("next winter", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 12
+
+    def test_last_spring(self):
+        r = parse_date("last spring", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_fall(self):
+        r = parse_date("fall", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 9
+
+    def test_autumn(self):
+        r = parse_date("autumn", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 9
+
+
+# ── Comma‑separated date formats ──────────────────────────────────────
+
+class TestCommaFormats:
+    def test_june_15_comma_2024(self):
+        r = parse_date("June 15, 2024", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 15, 0, 0)
+
+    def test_december_25_comma_2023(self):
+        r = parse_date("December 25, 2023", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2023, 12, 25, 0, 0)
+
+    def test_january_1st_comma_2000(self):
+        r = parse_date("January 1st, 2000", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2000
+        assert r.start_date.month == 1
+        assert r.start_date.day == 1
+
+
+# ── Half / fractional durations ────────────────────────────────────────
+
+class TestFractionalDurations:
+    def test_one_and_a_half_hours(self):
+        r = parse_date("one and a half hours", reference_date=REF)
+        assert r is not None
+
+    def test_two_and_a_half_weeks(self):
+        r = parse_date("two and a half weeks", reference_date=REF)
+        assert r is not None
+
+    def test_half_an_hour_ago(self):
+        r = parse_date("half an hour ago", reference_date=REF)
+        # may not parse, but shouldn't crash
+        if r is not None:
+            assert r.start_date < REF
+
+    def test_one_and_a_half_years_ago(self):
+        r = parse_date("one and a half years ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+
+# ── Multi‑date extraction (advanced) ──────────────────────────────────
+
+class TestMultiDateAdvanced:
+    def test_two_iso_dates(self):
+        r = parse_date(
+            "compare data from 2023-01-01 against 2024-01-01",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+
+    def test_mixed_relative_and_absolute(self):
+        r = parse_date(
+            "from March 2023 until today",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 1
+
+    def test_three_weekdays(self):
+        r = parse_date(
+            "available Monday, Wednesday and Friday",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+
+
+# ── "from today" / "from now" expressions ─────────────────────────────
+
+class TestFromNowExpressions:
+    def test_3_days_from_today(self):
+        r = parse_date("3 days from today", reference_date=REF)
+        assert r is not None
+        assert r.start_date >= dt(2024, 6, 15, 0, 0)
+
+    def test_a_week_from_today(self):
+        r = parse_date("a week from today", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+    def test_2_months_from_now(self):
+        r = parse_date("2 months from now", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+
+# ── Negative tests (shouldn't match as dates) ─────────────────────────
+
+class TestFalsePositives:
+    def test_price_100_dollars(self):
+        r = parse_date("it costs 100 dollars", reference_date=REF)
+        assert r is None
+
+    def test_room_number(self):
+        r = parse_date("go to room 305", reference_date=REF)
+        assert r is None
+
+    def test_phone_number(self):
+        r = parse_date("call 555-1234", reference_date=REF)
+        # shouldn't crash; if it does parse, at least verify it returns something
+        # the important thing is no exception
+
+    def test_version_number(self):
+        r = parse_date("upgrade to version 3.2.1", reference_date=REF)
+        # shouldn't crash
+
+    def test_plain_adjectives(self):
+        r = parse_date("the weather is nice", reference_date=REF)
+        assert r is None
+
+    def test_just_a_number(self):
+        r = parse_date("I have 42 apples", reference_date=REF)
+        assert r is None

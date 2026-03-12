@@ -65,6 +65,8 @@ def add_tag(sentence, matches, color="mediumspringgreen"):
 def strip_pm(txt, numbers_dict=None):
     txt = txt.lower()
     hoffset = 12 * ('pm' in txt or "afternoon" in txt or 'p.m' in txt)
+    txt = txt.replace("in the afternoon", "")
+    txt = txt.replace("in the morning", "")
     txt = txt.replace("afternoon", "")
     txt = txt.replace("'", " ")
     txt = re.sub(".?o.?clock", "", txt)
@@ -119,12 +121,13 @@ def erase_level(d, min_level):
 
 
 def num_corrector(start_date, now, words, locale, fallback):
+    words = [w.strip() for w in words]
     mod_score = sum([locale.MODIFIERS.get(x, 0) for x in words])
-    numeric = [x in locale.ORDINAL_NUMBERS or re.search("^[0-9,.]+$", x) for x in words]
-    if mod_score > 0 and numeric:
+    has_numeric = any(x in locale.ORDINAL_NUMBERS or re.search("^[0-9,.]+$", x) for x in words)
+    if mod_score > 0 and not has_numeric:
         end_date = start_date
         start_date = now
-    elif mod_score < 0 and numeric:
+    elif mod_score < 0 and not has_numeric:
         end_date = now
     else:
         end_date = start_date + fallback

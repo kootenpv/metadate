@@ -104,9 +104,9 @@ def cleanup_relevant_parts(bundles, locale, now):
                             "months": 3 * x.modifier * locale.MODIFIERS[modifier.x],
                             "day": 1,
                         }
-                    # elif x.unit == "season":
-                    #     rd_kwargs = {"months": 3 * x.modifier * locale.MODIFIERS[modifier.x],
-                    #                  "day": 21}
+                    elif x.unit == "season":
+                        rd_kwargs = {"months": 3 * x.modifier * locale.MODIFIERS[modifier.x],
+                                     "day": 21}
                     else:
                         unit = x.unit.lower() + 's'
                         rd_kwargs = {unit: x.modifier * locale.MODIFIERS[modifier.x]}
@@ -142,6 +142,17 @@ def cleanup_relevant_parts(bundles, locale, now):
                 new.append(x)
             else:
                 new.append(x)
+        for mu in meta_units:
+            if isinstance(mu.span, list):
+                unit = mu.unit.lower() + 's'
+                rd_kwargs = {unit: mu.modifier}
+                new.append(
+                    MetaRelative(
+                        levels={Units[mu.unit]},
+                        span=mu.span,
+                        **rd_kwargs,
+                    )
+                )
         cleaned_bundles.append(new)
     cleaned_bundles = [x for x in cleaned_bundles if any([y.is_relative for y in x])]
     return cleaned_bundles
@@ -446,6 +457,21 @@ def parse_date(
 
     if not cleaned_parts:
         return [] if multi else None
+
+    if multi:
+        expanded = []
+        for bundle in cleaned_parts:
+            weekday_only = [
+                x for x in bundle
+                if isinstance(x, MetaRelative) and x.rd.weekday is not None
+                and x.rd.days == 0 and x.rd.months == 0 and x.rd.years == 0
+            ]
+            if len(weekday_only) > 1 and len(weekday_only) == len([x for x in bundle if isinstance(x, MetaRelative)]):
+                for wd in weekday_only:
+                    expanded.append([wd])
+            else:
+                expanded.append(bundle)
+        cleaned_parts = expanded
 
     cleaned_parts = sorted(cleaned_parts, key=len, reverse=True)
 

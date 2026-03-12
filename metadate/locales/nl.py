@@ -37,6 +37,7 @@ MODIFIERS = {
     "aankomend": 1,
     "aankomende": 1,
     "na": 1,
+    "binnen": 1,
     "voor": -1,
     'recent': -1,
     'afgelope': -1,

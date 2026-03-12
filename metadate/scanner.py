@@ -98,7 +98,8 @@ class Scanner():
                                              [" ?"], self.RANK_NAMING + [""], END)
         self.SHORT_DAY_MONTH = scan_product(END, self.MONTHS_SHORTS, ["[.]?"], ["[ -][0-3]?[0-9]"],
                                             [" ?"], self.RANK_NAMING + [""], END)
-        self.ORDINAL_APM = scan_product(END, self.ORDINAL_NUMBERS, [r" a\.?m", r" p\.?m"])
+        self.ORDINAL_APM = scan_product(END, self.ORDINAL_NUMBERS,
+                                        [r" a\.?m", r" p\.?m", " in the afternoon", " in the morning"])
 
         self.ORDINAL = scan_product(END, self.ORDINAL_NUMBERS, [" "])
         self.ON_THE_DAY = scan_product(END, self.ON_THE, RDAY, [" ?"], self.RANK_NAMING, END)
@@ -134,13 +135,13 @@ class Scanner():
             (self.YYYY, self.yyyy),                      # YYYY
             (self.ORDINAL_APM, self.ordinal_apm),
             (self.ORDINAL, self.ordinal),
-            #(pipe(self.NOW, post=r"\b"), self.now),
+            (pipe(self.NOW, post=r"\b"), self.now),
             #(pipe(self.BETWEEN, post=r'\b'), lambda y, x: MetaBetween(None, None, None, span=y.match.span())),
             #(pipe(self.EVERY, post=r'\b'), self.every),
             (pipe(self.IN_THE, post=" "), self.in_the),
             #(pipe(self.DURATION, post=" "), self.duration),
             (pipe(self.TODAY_TOMORROW), self.today_tomorrow),
-            #(pipe(self.SEASONS, post=r'\b'), self.season),
+            (pipe(self.SEASONS, post=r'\b'), self.season),
             (pipe(self.QUARTERS, post=r'\b'), self.quarter),
             (pipe(self.MODIFIERS, post=r'\b'), self.modifier),
             (self.LETTER_MONTH_DAY, self.letter_month_day),
@@ -167,6 +168,7 @@ class Scanner():
             ("\n", "SENT"),
             # tricky stuff
             (pipe(self.AND), lambda y, x: MetaAnd(x, span=y.match.span())),
+            (pipe([k for k, v in self.NOON.items() if v[0] == v[1]], post=r'\b'), self.noon_midnight),
             (pipe(self.blacklist), None),
             (r' +', None),
             (r'-', None),  # can be "5-6 days" and "2009-2010"
@@ -270,12 +272,13 @@ class Scanner():
 
     @staticmethod
     def now(y, x):
-        now = datetime.now()
         if len(y.match.string) > 5:
-            # print("skipping now")
             return None
-        return MetaRelative(year=now.year, month=now.month, day=now.day, hour=now.hour,
-                            minute=now.minute, second=now.second, span=y.match.span())
+        return MetaRelative(days=0, hours=0, minutes=0, seconds=0, span=y.match.span())
+
+    def noon_midnight(self, y, x):
+        hour = self.NOON[x.lower()][0]
+        return MetaRelative(hour=hour, levels={Units.HOUR}, span=y.match.span())
 
     @staticmethod
     def hh_mm_ss(y, x):
