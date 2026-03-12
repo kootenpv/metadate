@@ -1,15 +1,6 @@
 """CScanner — C-accelerated drop-in replacement for NewScanner."""
 
 from metadate._cscanner import Scanner as _CScanner
-from metadate.classes import (
-    MetaAnd,
-    MetaModifier,
-    MetaOrdinal,
-    MetaRange,
-    MetaRelative,
-    MetaUnit,
-)
-from metadate.utils import Units
 
 
 class CScanner:
@@ -57,38 +48,4 @@ class CScanner:
         self._scanner = _CScanner(locale_data)
 
     def scan(self, text):
-        raw = self._scanner.scan(text)
-        results = []
-        for item in raw:
-            tag = item[0]
-            if tag == "R":
-                _, start, end, kwargs = item
-                kwargs = dict(kwargs)  # copy since we mutate
-                levels_raw = kwargs.pop("_levels", None)
-                modifier = kwargs.pop("_modifier", False)
-                levels = {Units(lv) for lv in levels_raw} if levels_raw else None
-                results.append(
-                    MetaRelative(
-                        span=(start, end),
-                        levels=levels,
-                        modifier=modifier,
-                        **kwargs,
-                    )
-                )
-            elif tag == "O":
-                results.append(MetaOrdinal(item[3], span=(item[1], item[2])))
-            elif tag == "U":
-                results.append(MetaUnit(item[3], span=(item[1], item[2])))
-            elif tag == "M":
-                results.append(
-                    MetaModifier(item[3], item[4], span=(item[1], item[2]))
-                )
-            elif tag == "G":
-                results.append(MetaRange(item[3], span=(item[1], item[2])))
-            elif tag == "A":
-                results.append(MetaAnd(item[3], span=(item[1], item[2])))
-            elif tag == "S":
-                results.append(item[1])
-            elif tag == "X":
-                results.append("SENT")
-        return results, []
+        return self._scanner.scan(text), []
