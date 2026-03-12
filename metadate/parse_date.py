@@ -144,6 +144,10 @@ def cleanup_relevant_parts(bundles, locale, now):
                 new.append(x)
         for mu in meta_units:
             if isinstance(mu.span, list):
+                # A bare "second" or "minute" (modifier=1, no preceding number)
+                # is likely the ordinal adjective, not the time unit.
+                if mu.modifier == 1 and len(mu.span) == 1 and mu.unit in ("SECOND", "MINUTE"):
+                    continue
                 unit = mu.unit.lower() + 's'
                 rd_kwargs = {unit: mu.modifier}
                 new.append(

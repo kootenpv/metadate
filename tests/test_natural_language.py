@@ -973,3 +973,129 @@ class TestFalsePositives:
     def test_just_a_number(self):
         r = parse_date("I have 42 apples", reference_date=REF)
         assert r is None
+
+    def test_second_as_ordinal_not_time_unit(self):
+        """'the second one' should not parse 'second' as a time unit."""
+        r = parse_date("the second one passed all checks", reference_date=REF)
+        assert r is None
+
+
+# ── Combined / multi‑extract stress tests ─────────────────────────────
+
+class TestCombinedMultiExtract:
+    """Glue multiple date expressions into one string with filler text
+    and verify multi=True extracts them all correctly."""
+
+    def test_tomorrow_and_iso_date_with_filler(self):
+        r = parse_date(
+            "I'll leave tomorrow but the contract was signed on 2023-03-15 so keep that in mind",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        dates = sorted(r)
+        assert dates[0].start_date.year == 2023
+        assert dates[-1].start_date == dt(2024, 6, 16, 0, 0)
+
+    def test_yesterday_noon_and_next_friday(self):
+        r = parse_date(
+            "the outage started yesterday and we expect the fix to land next friday",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        past = [x for x in r if x.start_date < REF]
+        future = [x for x in r if x.start_date > REF]
+        assert len(past) >= 1
+        assert len(future) >= 1
+
+    def test_month_year_and_relative_duration(self):
+        r = parse_date(
+            "sales were up in March 2023 but dropped again 3 weeks ago",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        years = {x.start_date.year for x in r}
+        assert 2023 in years
+
+    def test_two_relative_durations_with_noise(self):
+        r = parse_date(
+            "the first build failed 2 days ago, we retried and the second one passed 5 hours ago",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        for x in r:
+            assert x.start_date < REF
+
+    def test_weekday_and_month_day_connected(self):
+        r = parse_date(
+            "let's sync on Tuesday and then present on August 12",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        months = {x.start_date.month for x in r}
+        assert 8 in months
+
+    def test_three_dates_dense_paragraph(self):
+        r = parse_date(
+            "Project started Jan 2020, milestone hit on 2022-07-01, deadline is next month",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 3
+
+    def test_iso_and_written_time_glued(self):
+        r = parse_date(
+            "deploy at 2024-08-01 then monitor until three pm on the same day",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 1
+        has_august = any(x.start_date.month == 8 for x in r)
+        assert has_august
+
+    def test_ago_and_future_back_to_back(self):
+        r = parse_date(
+            "reviewed 2 weeks ago, next review in 3 months",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        past = [x for x in r if x.start_date < REF]
+        future = [x for x in r if x.start_date > REF]
+        assert len(past) >= 1
+        assert len(future) >= 1
+
+    def test_today_and_last_year_in_sentence(self):
+        r = parse_date(
+            "compare today's numbers against last year for the quarterly report",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+
+    def test_long_noisy_email_two_dates(self):
+        r = parse_date(
+            "Hi team, as discussed on the call with 12 stakeholders and 4 engineering leads, "
+            "the rollout is planned for June 25 and the rollback window closes on July 10. "
+            "Please coordinate with the 3 regional offices. Thanks!",
+            reference_date=REF,
+            multi=True,
+        )
+        assert isinstance(r, list)
+        assert len(r) >= 2
+        months = {x.start_date.month for x in r}
+        assert 6 in months
+        assert 7 in months
