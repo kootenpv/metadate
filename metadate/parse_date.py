@@ -15,6 +15,11 @@ from metadate.classes import (
 from metadate.scanner import Scanner
 from metadate.new_scanner import NewScanner
 from metadate.utils import Units, BOUNDARIES, erase_level, log, resolve_end_period
+
+try:
+    from metadate.c_scanner import CScanner
+except ImportError:
+    CScanner = None
 from metadate.classes import MetaAnd
 
 import metadate.locales.en as locale_en
@@ -26,6 +31,7 @@ from metadate.add_timezone import add_timezone
 lang_to_locale = {"en": locale_en, "nl": locale_nl}
 lang_to_scanner = {}
 lang_to_new_scanner = {}
+lang_to_c_scanner = {}
 
 
 def get_relevant_parts(matches):
@@ -437,13 +443,18 @@ def parse_date(
     max_level=None,
     return_early=0,
     use_new_scanner=False,
+    use_c_scanner=False,
 ):
     now = reference_date or datetime.now()
     past = past or rd()
     future = future or rd()
     locale = lang_to_locale[lang]
     log("\nSentence", text, verbose)
-    if use_new_scanner:
+    if use_c_scanner and CScanner is not None:
+        if lang not in lang_to_c_scanner:
+            lang_to_c_scanner[lang] = CScanner(locale)
+        scanner = lang_to_c_scanner[lang]
+    elif use_new_scanner:
         if lang not in lang_to_new_scanner:
             lang_to_new_scanner[lang] = NewScanner(locale)
         scanner = lang_to_new_scanner[lang]
