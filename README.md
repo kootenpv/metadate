@@ -124,7 +124,48 @@ r = parse_date("next friday", use_c_scanner=False)
 Granularity levels from coarsest to finest:
 
 ```
-YEAR > SEASON > QUARTER > MONTH > WEEK > DAY > HOUR > MINUTE > SECOND > MICROSECOND
+YEAR (9) > SEASON (8) > QUARTER (7) > MONTH (6) > WEEK (5) > DAY (4) > HOUR (3) > MINUTE (2) > SECOND (1) > MICROSECOND (0)
+```
+
+Every `MetaPeriod` carries a `levels` set that tells you exactly which components were specified in the input. Use `min_level` and `max_level` on `parse_date` to filter results by granularity:
+
+```python
+from metadate import parse_date, Units
+
+# "June 2024" has levels {YEAR, MONTH} — no day or time
+r = parse_date("June 2024")
+print(r.levels)     # {<Units.YEAR: 9>, <Units.MONTH: 6>}
+print(r.has_month)  # True
+print(r.has_day)    # False
+print(r.has_time)   # False
+
+# "tomorrow at 3pm" has levels {DAY, HOUR, MINUTE}
+r = parse_date("tomorrow at 3pm")
+print(r.levels)     # {<Units.DAY: 4>, <Units.HOUR: 3>, <Units.MINUTE: 2>}
+print(r.has_time)   # True
+print(r.min_level)  # Units.MINUTE (finest level present)
+print(r.max_level)  # Units.DAY    (coarsest level present)
+
+# Filter: only accept results that include at least HOUR precision
+# min_level=Units.HOUR means "the finest level must be HOUR or finer"
+r = parse_date("June 2024", min_level=Units.HOUR)
+print(r)  # None — "June 2024" only has MONTH precision, no time
+
+r = parse_date("tomorrow at 3pm", min_level=Units.HOUR)
+print(r.start_date)  # matches — has HOUR
+
+# Filter: only accept results no coarser than MONTH
+# max_level=Units.MONTH means "the coarsest level must be MONTH or finer"
+r = parse_date("2024", max_level=Units.MONTH)
+print(r)  # None — "2024" has YEAR as its coarsest level
+
+r = parse_date("June 2024", max_level=Units.MONTH)
+print(r.start_date)  # matches — coarsest level is MONTH
+
+# Multi-date extraction with level filtering
+text = "Sometime in 2024, specifically June 15 at 10am"
+results = parse_date(text, multi=True, min_level=Units.DAY)
+# Only returns "June 15 at 10am", skips "2024" (no day precision)
 ```
 
 ## CLI
