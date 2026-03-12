@@ -11,6 +11,12 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+/* ── Portability ────────────────────────────────────────────── */
+
+#ifdef _MSC_VER
+  #define strdup _strdup
+#endif
+
 /* ── Macros ─────────────────────────────────────────────────── */
 
 #define ISDIG(c)  ((c) >= '0' && (c) <= '9')
@@ -151,7 +157,7 @@ typedef struct {
     PyObject *u_DAY, *u_HOUR, *u_MINUTE, *u_SECOND, *u_MICRO;
 
     /* Cached interned unit-name strings for MetaUnit (strong) */
-    PyObject *uname[8]; /* YEAR MONTH WEEK DAY HOUR MINUTE SECOND MICROSECOND */
+    PyObject *uname[10]; /* YEAR MONTH WEEK DAY HOUR MINUTE SECOND MICROSECOND QUARTER SEASON */
 
     /* Pre-built kwnames tuples for MetaRelative vectorcall patterns */
     PyObject *kn_days;            /* ("days",)                                   */
@@ -169,6 +175,7 @@ typedef struct {
     PyObject *kn_hmsm;            /* ("hour","minute","second","microsecond")    */
     PyObject *kn_hms_lv;          /* ("hour","minute","second","levels")         */
     PyObject *kn_day;             /* ("day",)                                    */
+    PyObject *kn_ymdhms;          /* ("year","month","day","hour","minute","second") */
 
     /* Cached "SENT" string */
     PyObject *str_SENT;
@@ -422,7 +429,7 @@ static void parse_time_str(const char *raw, int len,
     if (nc >= 2) *minute = nums[1];
     if (nc >= 3) *second = nums[2];
     if (nc >= 4) *micro  = nums[3];
-    if (*hour == 12 && hoffset) hoffset = 0;
+    if (*hour == 12) *hour = 0;
     *hour = (hoffset + *hour) % 24;
 }
 
@@ -694,10 +701,122 @@ static int tokenize_at(const char *t, int pos, int n, int *kind, int *end) {
  * SECTION 9: Multi-word matching (uses unified table)
  * ══════════════════════════════════════════════════════════════ */
 
+/* RFC 2822 month abbreviation → month number (1-12), or 0 if no match. */
+static int rfc2822_month(const char *s) {
+    /* s points to 3 lowercase chars */
+    switch (s[0]) {
+    case 'j':
+        if (s[1]=='a' && s[2]=='n') return 1;
+        if (s[1]=='u' && s[2]=='n') return 6;
+        if (s[1]=='u' && s[2]=='l') return 7;
+        break;
+    case 'f': if (s[1]=='e' && s[2]=='b') return 2; break;
+    case 'm':
+        if (s[1]=='a' && s[2]=='r') return 3;
+        if (s[1]=='a' && s[2]=='y') return 5;
+        break;
+    case 'a':
+        if (s[1]=='p' && s[2]=='r') return 4;
+        if (s[1]=='u' && s[2]=='g') return 8;
+        break;
+    case 's': if (s[1]=='e' && s[2]=='p') return 9;  break;
+    case 'o': if (s[1]=='c' && s[2]=='t') return 10; break;
+    case 'n': if (s[1]=='o' && s[2]=='v') return 11; break;
+    case 'd': if (s[1]=='e' && s[2]=='c') return 12; break;
+    }
+    return 0;
+}
+
+/* RFC 2822 weekday abbreviation check (lowercase, 3 chars). */
+static int rfc2822_wday(const char *s) {
+    /* mon tue wed thu fri sat sun */
+    switch (s[0]) {
+    case 'm': return s[1]=='o' && s[2]=='n';
+    case 't': return (s[1]=='u' && s[2]=='e') || (s[1]=='h' && s[2]=='u');
+    case 'w': return s[1]=='e' && s[2]=='d';
+    case 'f': return s[1]=='r' && s[2]=='i';
+    case 's': return (s[1]=='a' && s[2]=='t') || (s[1]=='u' && s[2]=='n');
+    }
+    return 0;
+}
+
+/* Try RFC 2822: "Sat, 15 Jun 2024 12:00:00 +0000"
+ * Returns consumed length or 0. All parsing is char arithmetic + switch. */
+static int try_rfc2822(ScannerObject *self, const char *tl, const char *mt,
+                       int pos, int n, PyObject *results) {
+    int rem = n - pos;
+    /* Minimum: "Mon, 1 Jan 2024" = 16 chars */
+    if (rem < 16) return 0;
+    /* Quick reject: char at pos+3 must be ',' */
+    if (mt[pos+3] != ',') return 0;
+    if (!ISALP(mt[pos]) || !ISALP(mt[pos+1]) || !ISALP(mt[pos+2])) return 0;
+    if (!rfc2822_wday(tl + pos)) return 0;
+    /* Past "Www," — expect space then day */
+    int q = pos + 4;
+    if (q >= n || mt[q] != ' ') return 0;
+    q++;
+    /* Day: 1-2 digits */
+    if (q >= n || !ISDIG(mt[q])) return 0;
+    int day = mt[q] - '0'; q++;
+    if (q < n && ISDIG(mt[q])) { day = day * 10 + (mt[q] - '0'); q++; }
+    if (!VALID_DAY(day)) return 0;
+    /* Space + 3-letter month */
+    if (q >= n || mt[q] != ' ') return 0;
+    q++;
+    if (q + 3 > n || !ISALP(mt[q])) return 0;
+    int month = rfc2822_month(tl + q);
+    if (!month) return 0;
+    q += 3;
+    /* Space + 4-digit year */
+    if (q >= n || mt[q] != ' ') return 0;
+    q++;
+    if (q + 4 > n) return 0;
+    if ((mt[q] != '1' && mt[q] != '2') || !ISDIG(mt[q+1]) ||
+        !ISDIG(mt[q+2]) || !ISDIG(mt[q+3])) return 0;
+    int year = (mt[q]-'0')*1000 + (mt[q+1]-'0')*100 + (mt[q+2]-'0')*10 + (mt[q+3]-'0');
+    q += 4;
+    if (!VALID_YEAR(year)) return 0;
+    /* Optional: space + HH:MM[:SS] */
+    int hour = 0, minute = 0, second = 0;
+    int has_time = 0;
+    if (q + 6 <= n && mt[q] == ' ' && ISDIG(mt[q+1]) && ISDIG(mt[q+2]) &&
+        mt[q+3] == ':' && ISDIG(mt[q+4]) && ISDIG(mt[q+5])) {
+        hour = (mt[q+1]-'0')*10 + (mt[q+2]-'0');
+        minute = (mt[q+4]-'0')*10 + (mt[q+5]-'0');
+        q += 6;
+        has_time = 1;
+        if (q + 3 <= n && mt[q] == ':' && ISDIG(mt[q+1]) && ISDIG(mt[q+2])) {
+            second = (mt[q+1]-'0')*10 + (mt[q+2]-'0');
+            q += 3;
+        }
+        if (!VALID_HOUR(hour) || minute > 59 || second > 59) return 0;
+    }
+    /* Optional: space + timezone offset (+NNNN or -NNNN) — skip it */
+    if (q + 6 <= n && mt[q] == ' ' && (mt[q+1] == '+' || mt[q+1] == '-') &&
+        ISDIG(mt[q+2]) && ISDIG(mt[q+3]) && ISDIG(mt[q+4]) && ISDIG(mt[q+5])) {
+        q += 6;
+    }
+    /* Emit MetaRelative(year, month, day, hour, minute, second) */
+    if (has_time) {
+        PyObject *kv[] = {PyLong_FromLong(year), PyLong_FromLong(month),
+                          PyLong_FromLong(day),  PyLong_FromLong(hour),
+                          PyLong_FromLong(minute), PyLong_FromLong(second)};
+        if (emit(results, vrel(self, pos, q, 6, kv, self->kn_ymdhms)) < 0) return 0;
+    } else {
+        PyObject *kv[] = {PyLong_FromLong(year), PyLong_FromLong(month), PyLong_FromLong(day)};
+        if (emit(results, vrel(self, pos, q, 3, kv, self->kn_ymd)) < 0) return 0;
+    }
+    return q - pos;
+}
+
 static int do_try_multiword(ScannerObject *self, const char *tl, const char *mt,
                             int pos, int n, PyObject *results) {
     const char *chunk = tl + pos;
     int rem = n - pos;
+
+    /* RFC 2822: "Sat, 15 Jun 2024 12:00:00 +0000" */
+    { int consumed = try_rfc2822(self, tl, mt, pos, n, results);
+      if (consumed) return consumed; }
 
     /* "and a half" */
     if (rem >= 10 && memcmp(chunk, "and a half", 10) == 0) {
@@ -879,6 +998,23 @@ static int classify_word(ScannerObject *self, const char *text, const char *tl,
 
     const UEntry *ue = ut_find(&self->words, low);
 
+    /* If not found and word contains apostrophe, try prefix before it.
+     * E.g. "week's" → try "week", and adjust end to exclude "'s". */
+    if (!ue) {
+        char *apos = strchr(low, '\'');
+        if (apos) {
+            *apos = '\0';
+            ue = ut_find(&self->words, low);
+            if (ue) {
+                int prefix_len = (int)(apos - low);
+                we = ws + prefix_len;
+                wlen = prefix_len;
+            } else {
+                *apos = '\'';  /* restore for unknown-word emit */
+            }
+        }
+    }
+
     if (ue) switch (ue->wtype) {
 
     case WT_NOW:
@@ -908,9 +1044,14 @@ static int classify_word(ScannerObject *self, const char *text, const char *tl,
 
     case WT_MONTH:
     case WT_MONTH_SHORT:
-        { int md = try_day_after_month(self, text, tl, ws, we, n, ue->ival, results, out_end);
+        { /* Try day after month; also skip trailing dot for abbrevs like "Feb." */
+          int we2 = we;
+          if (we2 < n && text[we2] == '.') we2++;
+          int md = try_day_after_month(self, text, tl, ws, we2, n, ue->ival, results, out_end);
           if (md == 1) return 1;
           if (md < 0) return -1;
+          /* If there was a dot but no day followed, still advance past the dot */
+          if (we2 > we) *out_end = we2;
           /* standalone month */
           PyObject *kv[] = {PyLong_FromLong(ue->ival)};
           return emit(results, vrel(self, ws, we, 1, kv, self->kn_month)) < 0 ? -1 : 1; }
@@ -939,7 +1080,7 @@ static int classify_word(ScannerObject *self, const char *text, const char *tl,
           if (apm_end > after && wb_end(text, apm_end, n)) {
               int hv = (int)ue->dval;
               int hoff = pm ? 12 : 0;
-              if (hv == 12 && hoff) hoff = 0;
+              if (hv == 12) hv = 0;
               int hour = (hoff + hv) % 24;
               PyObject *lv = levels2(self->u_MINUTE, self->u_HOUR);
               PyObject *kv[] = {PyLong_FromLong(hour), PyLong_FromLong(0),
@@ -1016,12 +1157,6 @@ static int classify_token(ScannerObject *self, int kind, const char *text, const
             if (ISDIG(text[i])) { int v=0; while (i<end&&ISDIG(text[i])) { v=v*10+(text[i]-'0'); i++; } nums[nc++]=v; } else i++;
         }
         int dy=nums[0],mo=nums[1],yr=nums[2];
-        if (!self->dd_left_first) { int t2=dy; dy=mo; mo=t2; }
-        if (VALID_YEAR(yr)&&VALID_MONTH(mo)&&VALID_DAY(dy)) {
-            PyObject *kv[] = {PyLong_FromLong(yr), PyLong_FromLong(mo), PyLong_FromLong(dy)};
-            return emit(results, vrel(self, start, end, 3, kv, self->kn_ymd));
-        }
-        { int t2=dy; dy=mo; mo=t2; }
         if (VALID_YEAR(yr)&&VALID_MONTH(mo)&&VALID_DAY(dy)) {
             PyObject *kv[] = {PyLong_FromLong(yr), PyLong_FromLong(mo), PyLong_FromLong(dy)};
             return emit(results, vrel(self, start, end, 3, kv, self->kn_ymd));
@@ -1066,7 +1201,10 @@ static PyObject *Scanner_scan(ScannerObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "s#", &text, &text_len)) return NULL;
 
     int n = (int)text_len;
-    /* Build modified text (en-dash → '-') and lowercase copy */
+    /* Build modified text: replace common Unicode with ASCII, skip others.
+     * En-dash (U+2013) and em-dash (U+2014) → '-'
+     * Smart quotes (U+2018/2019/201C/201D) → '\'' or '"'
+     * Other multi-byte UTF-8 → ' ' (space, acts as separator)          */
     char *mt = (char *)malloc(n + 1);
     char *tl = (char *)malloc(n + 1);
     if (!mt || !tl) { free(mt); free(tl); return PyErr_NoMemory(); }
@@ -1074,10 +1212,32 @@ static PyObject *Scanner_scan(ScannerObject *self, PyObject *args) {
         int j = 0;
         for (int i = 0; i < n; ) {
             unsigned char c = (unsigned char)text[i];
-            if (c==0xE2 && i+2<n && (unsigned char)text[i+1]==0x80 && (unsigned char)text[i+2]==0x93) {
-                mt[j] = '-'; tl[j] = '-'; j++; i += 3;
-            } else {
+            if (c < 0x80) {
+                /* Plain ASCII */
                 mt[j] = text[i]; tl[j] = tolower(c); j++; i++;
+            } else if (c==0xE2 && i+2<n && (unsigned char)text[i+1]==0x80) {
+                unsigned char c2 = (unsigned char)text[i+2];
+                if (c2==0x93 || c2==0x94) {
+                    /* U+2013 en-dash, U+2014 em-dash → '-' */
+                    mt[j] = '-'; tl[j] = '-'; j++; i += 3;
+                } else if (c2==0x98 || c2==0x99) {
+                    /* U+2018/U+2019 smart single quotes → '\'' */
+                    mt[j] = '\''; tl[j] = '\''; j++; i += 3;
+                } else if (c2==0x9C || c2==0x9D) {
+                    /* U+201C/U+201D smart double quotes → '"' */
+                    mt[j] = '"'; tl[j] = '"'; j++; i += 3;
+                } else {
+                    /* Other U+20xx: replace with space, skip 3 bytes */
+                    mt[j] = ' '; tl[j] = ' '; j++; i += 3;
+                }
+            } else {
+                /* Other multi-byte UTF-8: determine sequence length, emit space */
+                int skip = 1;
+                if (c >= 0xC0 && c < 0xE0) skip = 2;
+                else if (c >= 0xE0 && c < 0xF0) skip = 3;
+                else if (c >= 0xF0) skip = 4;
+                if (i + skip > n) skip = n - i;  /* safety */
+                mt[j] = ' '; tl[j] = ' '; j++; i += skip;
             }
         }
         mt[j] = '\0'; tl[j] = '\0'; n = j;
@@ -1117,7 +1277,7 @@ static PyObject *Scanner_scan(ScannerObject *self, PyObject *args) {
  * SECTION 14: Build unified table from Python locale dicts
  * ══════════════════════════════════════════════════════════════ */
 
-/* Map unit-name string to index (0..7) */
+/* Map unit-name string to index (0..9) */
 static int uname_to_idx(const char *s) {
     switch (s[0]) {
     case 'Y': return 0; /* YEAR */
@@ -1128,7 +1288,11 @@ static int uname_to_idx(const char *s) {
     case 'W': return 2; /* WEEK */
     case 'D': return 3; /* DAY */
     case 'H': return 4; /* HOUR */
-    case 'S': return 6; /* SECOND */
+    case 'S':
+        if (s[1]=='E') return 6; /* SECOND */
+        if (s[1]=='A') return 9; /* SEASON */
+        break;
+    case 'Q': return 8; /* QUARTER */
     }
     return 0;
 }
@@ -1273,6 +1437,8 @@ static int Scanner_init(ScannerObject *self, PyObject *args, PyObject *kwds) {
     self->uname[5] = PyUnicode_InternFromString("MINUTE");
     self->uname[6] = PyUnicode_InternFromString("SECOND");
     self->uname[7] = PyUnicode_InternFromString("MICROSECOND");
+    self->uname[8] = PyUnicode_InternFromString("QUARTER");
+    self->uname[9] = PyUnicode_InternFromString("SEASON");
 
     /* ── Build kwnames tuples for vectorcall patterns ──────── */
     PyObject *ky  = PyUnicode_InternFromString("year");
@@ -1304,6 +1470,7 @@ static int Scanner_init(ScannerObject *self, PyObject *args, PyObject *kwds) {
     self->kn_hmsm         = PyTuple_Pack(4, kh, kmi, ks, kus);
     self->kn_hms_lv       = PyTuple_Pack(4, kh, kmi, ks, klv);
     self->kn_day          = PyTuple_Pack(1, kd);
+    self->kn_ymdhms       = PyTuple_Pack(6, ky, kmo, kd, kh, kmi, ks);
 
     /* PyTuple_Pack INCREFs items; drop our local refs */
     Py_DECREF(ky);  Py_DECREF(kmo); Py_DECREF(kd);  Py_DECREF(kh);
@@ -1335,7 +1502,7 @@ static void Scanner_dealloc(ScannerObject *self) {
     Py_XDECREF(self->u_HOUR);  Py_XDECREF(self->u_MINUTE);
     Py_XDECREF(self->u_SECOND);Py_XDECREF(self->u_MICRO);
 
-    for (int i = 0; i < 8; i++) Py_XDECREF(self->uname[i]);
+    for (int i = 0; i < 10; i++) Py_XDECREF(self->uname[i]);
 
     Py_XDECREF(self->kn_days);  Py_XDECREF(self->kn_now);
     Py_XDECREF(self->kn_month); Py_XDECREF(self->kn_month_day);
@@ -1344,7 +1511,7 @@ static void Scanner_dealloc(ScannerObject *self) {
     Py_XDECREF(self->kn_hour);  Py_XDECREF(self->kn_hour_lv);
     Py_XDECREF(self->kn_hour_min); Py_XDECREF(self->kn_hms);
     Py_XDECREF(self->kn_hmsm);  Py_XDECREF(self->kn_hms_lv);
-    Py_XDECREF(self->kn_day);
+    Py_XDECREF(self->kn_day);  Py_XDECREF(self->kn_ymdhms);
 
     Py_XDECREF(self->str_SENT);
 

@@ -88,8 +88,8 @@ def strip_pm(txt, numbers_dict=None):
         hour = parts[0]
     if numbers_dict is not None:
         hour = numbers_dict[hour]
-    if int(hour) == 12 and hoffset:
-        hoffset = 0
+    if int(hour) == 12:
+        hour = 0
     hour = (hoffset + int(hour)) % 24
     hour = 0 if hour is None else int(hour)
     minute = 0 if minute is None else int(minute)

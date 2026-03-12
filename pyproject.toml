@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metadate"
+version = "0.5.74"
+description = "Fast natural-language date parser for Python, with an optional C-accelerated scanner"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Pascal" }]
+keywords = [
+    "date",
+    "parser",
+    "natural-language",
+    "nlp",
+    "datetime",
+    "relative-date",
+    "dateutil",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: C",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Text Processing :: Linguistic",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "python-dateutil>=2.8",
+]
+
+[project.optional-dependencies]
+fast = ["ciso8601>=2.3"]
+
+[project.urls]
+Homepage = "https://github.com/pascal/metadate"
+Repository = "https://github.com/pascal/metadate"
+
+[project.scripts]
+metadate = "metadate.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["metadate*"]
+
+[tool.setuptools.package-data]
+metadate = ["_cscanner.c"]

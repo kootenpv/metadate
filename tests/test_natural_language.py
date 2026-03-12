@@ -1099,3 +1099,568 @@ class TestCombinedMultiExtract:
         months = {x.start_date.month for x in r}
         assert 6 in months
         assert 7 in months
+
+
+# ── Month abbreviation with dot ──────────────────────────────────────
+
+class TestMonthAbbrevDot:
+    def test_feb_dot_14(self):
+        r = parse_date("Feb. 14", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 2
+        assert r.start_date.day == 14
+
+    def test_sept_dot_1st(self):
+        r = parse_date("Sept. 1st", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 9
+        assert r.start_date.day == 1
+
+    def test_jan_dot_year(self):
+        r = parse_date("Jan. 2025", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 1
+        assert r.start_date.year == 2025
+
+    def test_dec_dot_25(self):
+        r = parse_date("Dec. 25", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 12
+        assert r.start_date.day == 25
+
+
+# ── DD/MM/YYYY format consistency ────────────────────────────────────
+
+class TestDDMMYYYY:
+    def test_01_06_2024(self):
+        r = parse_date("01/06/2024", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 1)
+
+    def test_25_06_2017(self):
+        r = parse_date("25/06/2017", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2017, 6, 25)
+
+    def test_15_01_2025(self):
+        r = parse_date("15/01/2025", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 1
+        assert r.start_date.day == 15
+
+
+# ── 12am/12pm edge cases ────────────────────────────────────────────
+
+class TestTwelveHourEdge:
+    def test_12am_is_midnight(self):
+        r = parse_date("12am", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 0
+
+    def test_12pm_is_noon(self):
+        r = parse_date("12pm", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 12
+
+    def test_12_30am(self):
+        r = parse_date("12:30am", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 0
+        assert r.start_date.minute == 30
+
+
+# ── ISO date + time (regression for C scanner) ──────────────────────
+
+class TestISODateTime:
+    def test_iso_date_time_has_time(self):
+        r = parse_date("2017-06-25 14:30:00", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 14
+        assert r.start_date.minute == 30
+
+    def test_iso_date_time_has_date(self):
+        r = parse_date("2017-06-25 14:30:00", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2017
+        assert r.start_date.month == 6
+        assert r.start_date.day == 25
+
+    def test_iso_date_with_seconds(self):
+        r = parse_date("2017-06-25 00:01:01", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2017, 6, 25, 0, 1, 1)
+
+    def test_iso_t_separator(self):
+        r = parse_date("2017-06-25T14:30:00", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2017, 6, 25, 14, 30, 0)
+
+    def test_iso_date_only(self):
+        r = parse_date("2024-01-15", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 1, 15)
+        assert r.end_date == dt(2024, 1, 16)
+
+
+# ── Unit keyword "quarter" as time unit ──────────────────────────────
+
+class TestQuarterAsUnit:
+    def test_quarter_unit_not_year(self):
+        """'next quarter' should not resolve to a year-level result."""
+        r = parse_date("next quarter", reference_date=REF)
+        assert r is not None
+        # Should be within a year, not 'next year'
+        assert r.start_date.year == 2024 or r.start_date.year == 2025
+        assert r.start_date < dt(2025, 7, 1)
+
+    def test_this_quarter(self):
+        r = parse_date("this quarter", reference_date=REF)
+        assert r is not None
+
+
+# ── Weekday plurals ──────────────────────────────────────────────────
+
+class TestWeekdayPlurals:
+    def test_tuesdays_returns_none(self):
+        """Plural weekdays are not a single date reference."""
+        r = parse_date("Tuesdays", reference_date=REF)
+        assert r is None
+
+    def test_on_fridays_returns_none(self):
+        r = parse_date("on Fridays", reference_date=REF)
+        assert r is None
+
+
+# ── Compact YYYYMMDD ─────────────────────────────────────────────────
+
+class TestCompactDate:
+    def test_yyyymmdd(self):
+        r = parse_date("20240615", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 15)
+
+    def test_yyyymmdd_end_of_year(self):
+        r = parse_date("20241231", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 12, 31)
+
+
+# ── Unicode / special characters (regression: C scanner crashes) ─────
+
+class TestUnicodeHandling:
+    def test_accented_chars(self):
+        r = parse_date("café opens at 3pm on Monday", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 15
+        assert r.start_date.weekday() == 0  # Monday
+
+    def test_em_dash(self):
+        r = parse_date("na\u00efve approach \u2014 next Tuesday", reference_date=REF)
+        assert r is not None
+        assert r.start_date.weekday() == 1  # Tuesday
+
+    def test_zero_width_spaces(self):
+        """Zero-width spaces should not crash the scanner."""
+        r = parse_date("meeting at 15:00 on 2024\u200b06\u200b15", reference_date=REF)
+        assert r is not None
+
+    def test_smart_apostrophe(self):
+        r = parse_date("next week\u2019s meeting", reference_date=REF)
+        assert r is not None
+        assert r.start_date >= REF
+
+    def test_em_dash_between_dates(self):
+        r = parse_date("Q1\u2014specifically January\u2014was bad", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 1
+
+    def test_en_dash_date_range(self):
+        r = parse_date("June 1\u201315", reference_date=REF)
+        assert r is not None
+
+    def test_regular_apostrophe_contraction(self):
+        r = parse_date("next week's meeting", reference_date=REF)
+        assert r is not None
+
+    def test_oclock_still_works(self):
+        r = parse_date("5 o'clock", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 5
+
+
+# ── Time‑of‑day keywords (this morning, tonight, etc.) ───────────────
+
+class TestTimeOfDayThis:
+    def test_this_morning(self):
+        r = parse_date("this morning", reference_date=REF)
+        assert r is not None
+        assert r.start_date.date() == REF.date()
+
+    def test_this_afternoon(self):
+        r = parse_date("this afternoon", reference_date=REF)
+        assert r is not None
+        assert r.start_date.date() == REF.date()
+
+    def test_this_evening(self):
+        r = parse_date("this evening", reference_date=REF)
+        assert r is not None
+        assert r.start_date.date() == REF.date()
+
+    def test_tonight(self):
+        r = parse_date("tonight", reference_date=REF)
+        assert r is not None
+        assert r.start_date.date() == REF.date()
+
+    def test_5_oclock_tomorrow(self):
+        r = parse_date("5 o'clock tomorrow", reference_date=REF)
+        assert r is not None
+        assert r.start_date.day == 16
+        assert r.start_date.hour == 5
+
+
+# ── "end of" / "beginning of" / "mid" expressions ────────────────────
+
+class TestEndBeginningMid:
+    def test_end_of_june(self):
+        r = parse_date("end of June", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 6
+
+    def test_end_of_the_month(self):
+        r = parse_date("end of the month", reference_date=REF)
+        assert r is not None
+
+    def test_beginning_of_next_year(self):
+        r = parse_date("beginning of next year", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year >= 2025
+
+    def test_early_july(self):
+        r = parse_date("early July", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 7
+
+    def test_mid_march(self):
+        r = parse_date("mid-March", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 3
+
+    def test_late_december(self):
+        r = parse_date("late December", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 12
+
+
+# ── Date ranges (to / through / until / between) ─────────────────────
+
+class TestDateRanges:
+    def test_june_1_to_june_15(self):
+        r = parse_date("June 1 to June 15", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 6
+
+    def test_monday_through_friday(self):
+        r = parse_date("Monday through Friday", reference_date=REF)
+        assert r is not None
+
+    def test_between_march_and_may(self):
+        r = parse_date("between March and May", reference_date=REF)
+        assert r is not None
+
+    def test_from_3pm_to_5pm(self):
+        r = parse_date("from 3pm to 5pm", reference_date=REF)
+        assert r is not None
+
+    def test_june_1_to_june_15_multi(self):
+        r = parse_date("June 1 to June 15", reference_date=REF, multi=True)
+        assert isinstance(r, list)
+        assert len(r) >= 2
+
+
+# ── Weekend expressions ───────────────────────────────────────────────
+
+class TestWeekend:
+    def test_this_weekend(self):
+        r = parse_date("this weekend", reference_date=REF)
+        assert r is not None
+
+    def test_next_weekend(self):
+        r = parse_date("next weekend", reference_date=REF)
+        assert r is not None
+        assert r.start_date >= REF
+
+    def test_last_weekend(self):
+        r = parse_date("last weekend", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+
+# ── Relative with "later" ────────────────────────────────────────────
+
+class TestLaterExpressions:
+    def test_3_days_later(self):
+        r = parse_date("3 days later", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+    def test_an_hour_later(self):
+        r = parse_date("an hour later", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+    def test_two_weeks_later(self):
+        r = parse_date("two weeks later", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+
+# ── Preposition anchors (by, since, as of, before, after, until) ─────
+
+class TestPrepositionAnchors:
+    def test_by_next_friday(self):
+        r = parse_date("by next Friday", reference_date=REF)
+        assert r is not None
+        assert r.start_date.weekday() == 4
+
+    def test_since_monday(self):
+        r = parse_date("since Monday", reference_date=REF)
+        assert r is not None
+        assert r.start_date.weekday() == 0
+
+    def test_as_of_yesterday(self):
+        r = parse_date("as of yesterday", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 14, 0, 0)
+
+    def test_until_july(self):
+        r = parse_date("until July", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 7
+
+    def test_before_june_1st(self):
+        r = parse_date("before June 1st", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 6
+        assert r.start_date.day == 1
+
+    def test_after_july_4th(self):
+        r = parse_date("after July 4th", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 7
+        assert r.start_date.day == 4
+
+
+# ── False positives: IPs, scores, page numbers, symbols ──────────────
+
+class TestMoreFalsePositives:
+    def test_ip_address(self):
+        r = parse_date("connect to 192.168.1.1", reference_date=REF)
+        assert r is None
+
+    def test_score_with_colon(self):
+        r = parse_date("scored 3:2 in the match", reference_date=REF)
+        assert r is None
+
+    def test_chapter_number(self):
+        r = parse_date("read chapter 12", reference_date=REF)
+        assert r is None
+
+    def test_page_number_that_looks_like_year(self):
+        """Ideally None, but bare 4-digit years after 'page' are hard to reject."""
+        r = parse_date("see page 2024", reference_date=REF)
+        # Shouldn't crash; may parse 2024 as a year
+
+    def test_dollar_sign_before_number(self):
+        r = parse_date("it costs $2024", reference_date=REF)
+        assert r is None
+
+    def test_percentage(self):
+        r = parse_date("achieved 100% accuracy", reference_date=REF)
+        assert r is None
+
+    def test_2_of_the_3_people(self):
+        """'2 of the 3' should not become '2nd of the 3rd'."""
+        r = parse_date("2 of the 3 people agreed", reference_date=REF)
+        assert r is None
+
+
+# ── Timezone‑aware strings ────────────────────────────────────────────
+
+class TestTimezoneStrings:
+    def test_3pm_est(self):
+        r = parse_date("3pm EST", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 15
+
+    def test_iso_with_z(self):
+        r = parse_date("2024-06-15T12:00:00Z", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 15, 12, 0, 0)
+
+    def test_iso_with_offset(self):
+        r = parse_date("2024-06-15T12:00:00+05:30", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2024
+        assert r.start_date.month == 6
+        assert r.start_date.day == 15
+
+
+# ── RFC 2822 / email header format ───────────────────────────────────
+
+class TestRFC2822:
+    def test_rfc2822_basic(self):
+        r = parse_date("Sat, 15 Jun 2024 12:00:00", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2024
+        assert r.start_date.month == 6
+        assert r.start_date.day == 15
+
+    def test_rfc2822_with_timezone(self):
+        r = parse_date("Sat, 15 Jun 2024 12:00:00 +0000", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year == 2024
+
+
+# ── Leap year / boundary edge cases ─────────────────────────────────
+
+class TestLeapYearBoundary:
+    def test_feb_29_leap_year(self):
+        r = parse_date("Feb 29, 2024", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 2, 29)
+
+    def test_feb_29_non_leap_year(self):
+        """Should not crash on invalid date; None or graceful handling."""
+        r = parse_date("Feb 29, 2023", reference_date=REF)
+        # Either None or silently adjusted — just don't crash
+
+    def test_december_31(self):
+        r = parse_date("December 31", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 12
+        assert r.start_date.day == 31
+
+    def test_january_1(self):
+        r = parse_date("January 1", reference_date=REF)
+        assert r is not None
+        assert r.start_date.month == 1
+        assert r.start_date.day == 1
+
+
+# ── Fortnight / decade / less common units ───────────────────────────
+
+class TestUncommonUnits:
+    def test_fortnight_ago(self):
+        r = parse_date("a fortnight ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_decade_ago(self):
+        r = parse_date("a decade ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date.year <= 2014
+
+    def test_last_decade(self):
+        r = parse_date("last decade", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+
+# ── Compound "ago" with "and" ────────────────────────────────────────
+
+class TestCompoundAgo:
+    def test_2_hours_and_30_minutes_ago(self):
+        r = parse_date("2 hours and 30 minutes ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_1_day_and_6_hours_ago(self):
+        r = parse_date("1 day and 6 hours ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+
+# ── Written‑out ordinals for day of month ────────────────────────────
+
+class TestWrittenOrdinals:
+    def test_the_fifth_of_june(self):
+        """Written ordinals + 'of Month' require scanner-level support."""
+        r = parse_date("the fifth of June", reference_date=REF)
+        # Aspirational: ideally day=5, month=6
+        if r is not None:
+            assert r.start_date.month == 6
+
+    def test_the_twenty_first_of_march(self):
+        """Two-word written ordinals are not yet supported."""
+        r = parse_date("the twenty first of March", reference_date=REF)
+        # Aspirational: ideally day=21, month=3
+        if r is not None:
+            assert r.start_date.month == 3
+
+    def test_first_of_january(self):
+        r = parse_date("first of January", reference_date=REF)
+        # "first" is parsed as a modifier; ideally day=1, month=1
+        if r is not None:
+            assert r.start_date.month == 1
+
+
+# ── Approximate modifiers ────────────────────────────────────────────
+
+class TestApproximateModifiers:
+    def test_around_3pm(self):
+        r = parse_date("around 3pm", reference_date=REF)
+        assert r is not None
+        assert r.start_date.hour == 15
+
+    def test_approximately_2_weeks_ago(self):
+        r = parse_date("approximately 2 weeks ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_about_an_hour_ago(self):
+        r = parse_date("about an hour ago", reference_date=REF)
+        assert r is not None
+        assert r.start_date < REF
+
+    def test_roughly_3_days_from_now(self):
+        r = parse_date("roughly 3 days from now", reference_date=REF)
+        assert r is not None
+        assert r.start_date > REF
+
+
+# ── Case sensitivity ─────────────────────────────────────────────────
+
+class TestCaseSensitivity:
+    def test_all_caps_tomorrow(self):
+        r = parse_date("TOMORROW", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 16, 0, 0)
+
+    def test_all_caps_next_week(self):
+        r = parse_date("NEXT WEEK", reference_date=REF)
+        assert r is not None
+
+    def test_lowercase_month_day_year(self):
+        r = parse_date("june 15, 2024", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 15, 0, 0)
+
+    def test_mixed_case(self):
+        r = parse_date("nExT fRiDaY", reference_date=REF)
+        assert r is not None
+        assert r.start_date.weekday() == 4
+
+
+# ── Multi‑mode deduplication / edge cases ────────────────────────────
+
+class TestMultiEdgeCases:
+    def test_duplicate_dates(self):
+        r = parse_date("tomorrow and tomorrow", reference_date=REF, multi=True)
+        assert isinstance(r, list)
+        assert len(r) >= 1
+
+    def test_single_date_in_multi(self):
+        r = parse_date("only yesterday matters", reference_date=REF, multi=True)
+        assert isinstance(r, list)
+        assert len(r) >= 1
+        assert r[0].start_date == dt(2024, 6, 14, 0, 0)

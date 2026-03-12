@@ -14,6 +14,11 @@ from metadate.classes import MetaDuration
 from metadate.utils import strip_pm
 from metadate.utils import Units
 
+_RFC2822_MON = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+}
+
 RYEAR = ["[12][0-9]{3}"]
 RMONTH = ["0?[1-9]", "1[0-2]"]
 RDAY = ['[12][0-9]', '[3][01]', '0[1-9]', '[0-9]']
@@ -87,7 +92,7 @@ class Scanner():
         self.AMBIGUOUS_DD_DD_YYYY = scan_product(
             END, RDAY, ["[./ -]"], RDAY, ["[./ -]"], RYEAR + ["[01289][0-9]"], END)
         self.DDMMYYYY = scan_product(END, RDAY, RMONTH, RYEAR, END)
-        self.YYYY = scan_product(END, RYEAR, END)
+        self.YYYY = scan_product([r'(?<![$€£¥#])'], END, RYEAR, END)
         self.AMBIGUOUS_DD_DD = scan_product(
             ["on ", "the ", "for ", "from ", "until "], RDAY, ["[./ -]"], RDAY, END, ["(?![./0-9-][./0-9-])"])
         self.DDMM = scan_product(END, [r"\d{1,2}"], [" ?..", ""], [
@@ -119,7 +124,19 @@ class Scanner():
         #     "coming": 1
         # }
 
+        # RFC 2822: "Sat, 15 Jun 2024 12:00:00 +0000"
+        # One regex to match the shape; callback uses dict lookups, no further regex.
+        self.RFC2822 = (
+            r'(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), '
+            r'[0-3]?[0-9] '
+            r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) '
+            r'[12][0-9]{3}'
+            r'(?: [0-2][0-9]:[0-5][0-9](?::[0-5][0-9])?)?'
+            r'(?: [+-][0-9]{4})?'
+        )
+
         self.scanner = re.Scanner([
+            (self.RFC2822, self.rfc2822),
             (self.HH_MM_SS_m, self.hh_mm_ss),
             (self.HH_MM_SS, self.hh_mm_ss),
             (self.HH_MM, self.hh_mm),
@@ -149,20 +166,22 @@ class Scanner():
             (self.DDMM, self.ddmm),
             (self.DDMMS, self.ddmms),
             (pipe(self.MONTHS, post=r'\b(?! i)'), self.letter_month),
-            (pipe(self.MONTHS_SHORTS, post=r'[.]?\b(?! i\b)'), self.short_month),
+            (pipe(self.MONTHS_SHORTS, post=r'[.]?(?![a-zA-Z])'), self.short_month),
             (pipe(self.WEEKDAY, post=r'\b'), self.weekday),
             (pipe(self.WEEKDAY_SHORTS, post=r'\b'), self.weekday_shorts),
             (self.ON_THE_DAY, self.on_the_day),
             (self.AT_HOUR, self.at_hour),
             ("and a half", lambda y, x: MetaOrdinal("0.5", span=y.match.span())),
             # (self.ON_THE_DAY, self.on_the_day_ordinal),
+            (r'\bfortnights?\b', lambda y, x: MetaUnit("WEEK", span=y.match.span(), modifier=2)),
+            (r'\bdecades?\b', lambda y, x: MetaUnit("YEAR", span=y.match.span(), modifier=10)),
             (pipe(self.UNITS, r'\b', r'\b'), lambda y, x: MetaUnit(
                 self.UNITS[x.lower()], span=y.match.span())),
             (r"\d+[.,]?[0-9]?", lambda y, x: MetaOrdinal(x.replace(",", "."), span=y.match.span())),
 
             # temps
             ("[.][.]+", "ellipsis"),
-            (r"\b[a-zA-Z]{1,3}[.](?![a-zA-Z0-9])[^.]", "abbrev"),
+            (r"\b[a-zA-Z]{1,3}[.](?![a-zA-Z0-9])(?! ?\d)[^.]", "abbrev"),
             ("[!?]+(?![a-zA-Z0-9]) ?", "SENT"),
             ("[.](?![a-zA-Z0-9.]) ?", "SENT"),
             ("\n", "SENT"),
@@ -178,6 +197,32 @@ class Scanner():
     def scan(self, text):
         text = text.replace("–", "-")
         return self.scanner.scan(text)
+
+    @staticmethod
+    def rfc2822(y, x):
+        # "Sat, 15 Jun 2024 12:00:00 +0000" — all parsing via split + dict lookup
+        parts = x.split()
+        # parts: ['Sat,', '15', 'Jun', '2024', '12:00:00', '+0000']
+        day = int(parts[1])
+        month = _RFC2822_MON[parts[2][:3].lower()]
+        year = int(parts[3])
+        levels = {Units.YEAR, Units.MONTH, Units.DAY}
+        hour, minute, second = 0, 0, 0
+        if len(parts) >= 5 and ':' in parts[4]:
+            time_parts = parts[4].split(':')
+            hour = int(time_parts[0])
+            levels.add(Units.HOUR)
+            if len(time_parts) >= 2:
+                minute = int(time_parts[1])
+                levels.add(Units.MINUTE)
+            if len(time_parts) >= 3:
+                second = int(time_parts[2])
+                levels.add(Units.SECOND)
+        return MetaRelative(
+            year=year, month=month, day=day,
+            hour=hour, minute=minute, second=second,
+            levels=levels, span=y.match.span(),
+        )
 
     def season(self, y, x):
         return MetaRelative(month=self.SEASONS[x.lower()], day=21, levels={Units.SEASON},

@@ -27,7 +27,9 @@ UNITS = {
     'seasons': 'SEASON',
     'year': 'YEAR',
     'years': 'YEAR',
-    'yrs': "YEAR"
+    'yrs': "YEAR",
+    'weekend': 'WEEK',
+    'weekends': 'WEEK',
 }
 
 
@@ -141,7 +143,11 @@ TODAY_TOMORROW = {
     "tmrw": 1,
     "day after tomorrow": 2,
     "yesterday": -1,
-    "day before yesterday": -2
+    "day before yesterday": -2,
+    "tonight": 0,
+    "this morning": 0,
+    "this afternoon": 0,
+    "this evening": 0,
 }
 
 NOON = {

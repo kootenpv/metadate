@@ -19,6 +19,10 @@ try:
     from metadate.c_scanner import CScanner
 except ImportError:
     CScanner = None
+try:
+    from ciso8601 import parse_datetime as _ciso_parse
+except ImportError:
+    _ciso_parse = None
 from metadate.classes import MetaAnd
 
 import metadate.locales.en as locale_en
@@ -30,6 +34,68 @@ from metadate.add_timezone import add_timezone
 lang_to_locale = {"en": locale_en, "nl": locale_nl}
 lang_to_scanner = {}
 lang_to_c_scanner = {}
+
+
+def _try_iso_fast(text, now, future_boundary, past_boundary, locale, verbose):
+    """Fast-path: if text looks like a pure ISO 8601 string, use ciso8601.
+
+    Returns a MetaPeriod or None (meaning: fall through to full pipeline).
+    Only triggers when the entire stripped input is an ISO datetime —
+    not for natural language that happens to contain a date.
+    """
+    if _ciso_parse is None:
+        return None
+    t = text.strip()
+    n = len(t)
+    # Quick reject: must start with a 4-digit year and be a plausible length
+    if n < 8 or n > 35 or not t[0].isdigit():
+        return None
+    # Must look like YYYY-... or YYYYMMDD
+    if n >= 5 and t[4] not in ('-', '/', 'T') and not t[4].isdigit():
+        return None
+    try:
+        dt = _ciso_parse(t)
+    except (ValueError, TypeError):
+        return None
+    # Strip timezone info for boundary comparison (boundaries are naive)
+    dt_naive = dt.replace(tzinfo=None) if dt.tzinfo else dt
+    if not (past_boundary <= dt_naive <= future_boundary):
+        return None
+    dt = dt_naive
+    # Determine granularity from the string
+    levels = {Units.YEAR, Units.MONTH, Units.DAY}
+    if 'T' in t or ' ' in t:
+        # Has time component
+        time_part = t.split('T')[-1] if 'T' in t else t.split(' ')[-1]
+        levels.add(Units.HOUR)
+        if ':' in time_part:
+            parts = time_part.split(':')
+            if len(parts) >= 2:
+                levels.add(Units.MINUTE)
+            if len(parts) >= 3:
+                levels.add(Units.SECOND)
+                if '.' in parts[-1]:
+                    levels.add(Units.MICROSECOND)
+    end_date = erase_level(dt, min(levels)) + _iso_end_delta(min(levels))
+    span = [(0, len(text))]
+    log("\nISO fast-path", dt, verbose)
+    return MetaPeriod(dt, end_date, levels, span, locale.NAME, text, False, now)
+
+
+def _iso_end_delta(min_level):
+    if min_level == Units.YEAR:
+        return rd(years=1)
+    if min_level == Units.MONTH:
+        return rd(months=1)
+    if min_level == Units.DAY:
+        return rd(days=1)
+    if min_level == Units.HOUR:
+        return rd(hours=1)
+    if min_level == Units.MINUTE:
+        return rd(minutes=1)
+    if min_level == Units.SECOND:
+        return rd(seconds=1)
+    return rd(microseconds=1)
 
 
 def get_relevant_parts(matches):
@@ -447,6 +513,13 @@ def parse_date(
     future = future or rd()
     locale = lang_to_locale[lang]
     log("\nSentence", text, verbose)
+    # Fast-path: pure ISO 8601 strings bypass the full pipeline
+    if not multi and return_early == 0:
+        iso_result = _try_iso_fast(
+            text, now, now + future, now - past, locale, verbose
+        )
+        if iso_result is not None:
+            return add_timezone(iso_result)
     if use_c_scanner and CScanner is not None:
         if lang not in lang_to_c_scanner:
             lang_to_c_scanner[lang] = CScanner(locale)
