@@ -40,7 +40,7 @@ pip install metadate
 For faster ISO 8601 parsing:
 
 ```bash
-pip install metadate[fast]
+pip install metadate[fastciso]
 ```
 
 The C extension is compiled automatically when a C compiler is available. If compilation fails (e.g. no compiler installed), **metadate** falls back to the pure-Python scanner — no functionality is lost, only speed.

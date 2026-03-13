@@ -38,11 +38,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-fast = ["ciso8601>=2.3"]
+fastciso = ["ciso8601>=2.3"]
 
 [project.urls]
-Homepage = "https://github.com/pascal/metadate"
-Repository = "https://github.com/pascal/metadate"
+Homepage = "https://github.com/kootenpv/metadate"
+Repository = "https://github.com/kootenpv/metadate"
 
 [project.scripts]
 metadate = "metadate.__main__:main"
