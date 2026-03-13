@@ -86,6 +86,13 @@ class Scanner():
         self.HH_MM = scan_product(END, RHOUR, ["[:h']"], RMINUTE, APM + ["[hm]?"], END)
         #self.HH_MM2 = scan_product(END, RHOUR, ["."], RMINUTE, APM, END)
         self.HHAPM = scan_product(END, RHOUR, APM, END)
+        # ISO 8601 full datetime: 2024-06-15T14:30:00Z, 2024-06-15T14:30:00+05:30
+        self.ISO_DATETIME = (
+            r'(?<!\w)[12][0-9]{3}[-/][01]?[0-9][-/][0-3]?[0-9]'
+            r'[T ][0-2]?[0-9]:[0-5][0-9](?::[0-5][0-9](?:\.\d+)?)?'
+            r'(?:Z|[+-][0-9]{2}:?[0-9]{2})?'
+            r'(?!\w)'
+        )
         self.YYYY_MM_DD = scan_product(END, RYEAR, SEP, RMONTH, SEP, RDAY, END)
         self.YYYYMMDD = scan_product(END, RYEAR, RMONTH, RDAY, END)
         self.DD_MM_YYYY = scan_product(END, RDAY, SEP, RMONTH, SEP, RYEAR, END)
@@ -142,6 +149,7 @@ class Scanner():
             (self.HH_MM, self.hh_mm),
             #(self.HH_MM2, self.hh_mm),
             (self.HHAPM, self.hh_mm),
+            (self.ISO_DATETIME, self.iso_datetime),
             (self.YYYY_MM_DD, self.yyyy_mm_dd),
             (self.YYYYMMDD, self.yyyymmdd),
             # these ambigious have a bad performance
@@ -350,6 +358,37 @@ class Scanner():
 
     def ordinal(self, y, x):
         return MetaOrdinal(self.ORDINAL_NUMBERS[x.lower().strip().replace(",", ".")], span=y.match.span())
+
+    @staticmethod
+    def iso_datetime(y, x):
+        # "2024-06-15T14:30:00Z" or "2024-06-15T14:30:00+05:30"
+        # Split date and time on T or space
+        if 'T' in x:
+            date_part, time_rest = x.split('T', 1)
+        else:
+            date_part, time_rest = x.split(' ', 1)
+        date_parts = re.split(r'[-/]', date_part)
+        year, month, day = int(date_parts[0]), int(date_parts[1]), int(date_parts[2])
+        # Strip timezone suffix for time parsing
+        time_str = re.sub(r'[Zz]$', '', time_rest)
+        time_str = re.sub(r'[+-]\d{2}:?\d{2}$', '', time_str)
+        time_parts = time_str.split(':')
+        hour = int(time_parts[0])
+        minute = int(time_parts[1]) if len(time_parts) >= 2 else 0
+        levels = {Units.YEAR, Units.MONTH, Units.DAY, Units.HOUR, Units.MINUTE}
+        kwargs = dict(year=year, month=month, day=day, hour=hour, minute=minute)
+        if len(time_parts) >= 3:
+            sec_str = time_parts[2]
+            if '.' in sec_str:
+                sec, frac = sec_str.split('.', 1)
+                kwargs['second'] = int(sec)
+                kwargs['microsecond'] = int(frac.ljust(6, '0')[:6])
+                levels.add(Units.SECOND)
+                levels.add(Units.MICROSECOND)
+            else:
+                kwargs['second'] = int(sec_str)
+                levels.add(Units.SECOND)
+        return MetaRelative(levels=levels, span=y.match.span(), **kwargs)
 
     @staticmethod
     def yyyy_mm_dd(y, x):
