@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "metadate"
-version = "0.5.74"
+version = "0.6.0"
 description = "Fast natural-language date parser for Python, with an optional C-accelerated scanner"
 readme = "README.md"
 license = "MIT"

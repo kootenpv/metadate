@@ -18,9 +18,10 @@ from metadate.classes import MetaPeriod
 from dateutil.relativedelta import relativedelta as rd
 
 import sys
+from importlib.metadata import version as _v
 
 __project__ = "metadate"
-__version__ = "0.5.74"
+__version__ = _v(__project__)
 
 
 def is_mp(x):
