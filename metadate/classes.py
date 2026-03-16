@@ -116,7 +116,7 @@ class MetaPeriod(Meta):
         result = {
             "start_date": self.start_date.isoformat(),
             "end_date": self.end_date.isoformat(),
-            "levels": list(self.levels),
+            "levels": [x.name for x in self.levels],
             "spans": [{"begin": x[0], "end": x[1]} for x in self.spans],
             "matches": self.matches,
         }

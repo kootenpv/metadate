@@ -945,6 +945,12 @@ class TestFromNowExpressions:
         assert r is not None
         assert r.start_date > REF
 
+    def test_in_4_days_from_now_at_10am(self):
+        r = parse_date("in 4 days from now at 10am", reference_date=REF)
+        assert r is not None
+        assert r.start_date == dt(2024, 6, 19, 10, 0)
+        assert r.has_time is True
+
 
 # ── Negative tests (shouldn't match as dates) ─────────────────────────
 

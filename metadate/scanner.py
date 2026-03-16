@@ -196,6 +196,7 @@ class Scanner():
             # tricky stuff
             (pipe(self.AND), lambda y, x: MetaAnd(x, span=y.match.span())),
             (pipe([k for k, v in self.NOON.items() if v[0] == v[1]], post=r'\b'), self.noon_midnight),
+            (pipe(self.SKIP, post=r'\b'), None),
             (pipe(self.blacklist), None),
             (r' +', None),
             (r'-', None),  # can be "5-6 days" and "2009-2010"

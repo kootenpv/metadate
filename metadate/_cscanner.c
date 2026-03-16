@@ -144,6 +144,7 @@ typedef struct {
     Phrase *ph_today_multi;  int n_today_multi;
     Phrase *ph_quarter_multi;int n_quarter_multi;
     Phrase *ph_ordinal_multi;int n_ordinal_multi;
+    Phrase *ph_whitelist_multi;int n_whitelist_multi;
 
     /* Meta* classes (strong refs) */
     PyObject *cls_Rel, *cls_Ord, *cls_Unit, *cls_Mod, *cls_Rng, *cls_And;
@@ -832,6 +833,16 @@ static int do_try_multiword(ScannerObject *self, const char *tl, const char *mt,
         }
     }
 
+    /* Multi-word whitelist (skip phrases like "from now") */
+    for (int i = 0; i < self->n_whitelist_multi; i++) {
+        int pl = self->ph_whitelist_multi[i].len;
+        if (rem >= pl && memcmp(chunk, self->ph_whitelist_multi[i].str, pl) == 0) {
+            if (pos+pl >= n || !ISWAN((unsigned char)tl[pos+pl])) {
+                return pl;
+            }
+        }
+    }
+
     /* Multi-word today/tomorrow */
     for (int i = 0; i < self->n_today_multi; i++) {
         int pl = self->ph_today_multi[i].len;
@@ -1390,6 +1401,7 @@ static int Scanner_init(ScannerObject *self, PyObject *args, PyObject *kwds) {
     self->ph_today_multi  = phrases_from_pylist(GET_DICT("today_multi"),  &self->n_today_multi);
     self->ph_quarter_multi= phrases_from_pylist(GET_DICT("quarter_multi"),&self->n_quarter_multi);
     self->ph_ordinal_multi= phrases_from_pylist(GET_DICT("ordinal_multi"),&self->n_ordinal_multi);
+    self->ph_whitelist_multi= phrases_from_pylist(GET_DICT("whitelist_multi"),&self->n_whitelist_multi);
 
     /* ── Import and cache Meta* classes + __init__ functions ── */
     PyObject *cls_mod = PyImport_ImportModule("metadate.classes");
@@ -1490,6 +1502,7 @@ static void Scanner_dealloc(ScannerObject *self) {
     phrases_free(self->ph_today_multi,  self->n_today_multi);
     phrases_free(self->ph_quarter_multi,self->n_quarter_multi);
     phrases_free(self->ph_ordinal_multi,self->n_ordinal_multi);
+    phrases_free(self->ph_whitelist_multi,self->n_whitelist_multi);
 
     Py_XDECREF(self->cls_Rel);  Py_XDECREF(self->cls_Ord);
     Py_XDECREF(self->cls_Unit); Py_XDECREF(self->cls_Mod);

@@ -164,6 +164,8 @@ WHITELIST = ["op", "of", "van", ",", "de", "nacht",
              "morgen", "voor", "om", "middag", "ochtend", "avond"]
 
 
+SKIP = ["vanaf nu", "vanaf"]
+
 BETWEEN = ["tussen", "voor"]
 EVERY = ["elke"]
 DURATION = ["voor", "tot"]

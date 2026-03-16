@@ -45,6 +45,11 @@ class CScanner:
             key=len,
             reverse=True,
         )
+        locale_data["whitelist_multi"] = sorted(
+            [x for x in locale_data["whitelist"] if " " in x],
+            key=len,
+            reverse=True,
+        )
         self._scanner = _CScanner(locale_data)
 
     def scan(self, text):

@@ -43,9 +43,6 @@ fastciso = ["ciso8601>=2.3"]
 Homepage = "https://github.com/kootenpv/metadate"
 Repository = "https://github.com/kootenpv/metadate"
 
-[project.scripts]
-metadate = "metadate.__main__:main"
-
 [tool.setuptools.packages.find]
 include = ["metadate*"]
 

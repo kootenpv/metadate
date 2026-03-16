@@ -167,7 +167,9 @@ ON_THE = ['on the']
 AT = ['at']
 
 # still to implement: night, morning
-WHITELIST = ["at", "of", ",", "the", "night", "morning"]
+WHITELIST = ["at", "of", ",", "the", "night", "morning", "from now"]
+
+SKIP = ["from now"]
 
 BETWEEN = ["between"]
 EVERY = ["every"]
